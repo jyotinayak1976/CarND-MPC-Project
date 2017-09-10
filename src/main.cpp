@@ -82,6 +82,8 @@ int main() {
       string s = hasData(sdata);
       if (s != "") {
         auto j = json::parse(s);
+        
+        // 1. Get data from simulator
         string event = j[0].get<string>();
         if (event == "telemetry") {
           // j[1] is the data JSON object
@@ -91,16 +93,57 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          
 
-          /*
-          * TODO: Calculate steering angle and throttle using MPC.
-          *
-          * Both are in between [-1, 1].
-          *
-          */
+          // 2. Convert data from global coordinates to car coordinates
+    
           double steer_value;
           double throttle_value;
+          
+          
+          // Use Eigen vector as polyfit() requires it
+          Eigen::VectorXd   x_car_space = Eigen::VectorXd( ptsx.size() ) ;
+          Eigen::VectorXd   y_car_space = Eigen::VectorXd( ptsx.size() ) ;
+          
+          // Transform ptsx, ptsy to car coords
+          for (int i = 0; i < ptsx.size(); i++) {
+            double dtx = ptsx[i] - px;
+            double dty = ptsy[i] - py;
+            
+            x_car_space[i] = dtx * cos(psi) + dty * sin(psi);
+            y_car_space[i] = dty * cos(psi) - dtx * sin(psi);
+            
+          }
 
+          // Fit polynomial to Car x and y coordinates
+          auto coeffs = polyfit(x_car_space, y_car_space, 3);
+          
+          
+          // 3. Calculate cross-track error and orientation error
+          //x set to zero since it is calculated with respect to the first point
+          double cte = polyeval(coeffs, 0);
+          // Calculate orientation error
+          
+          double epsi = -atan(coeffs[1]);
+          
+          //4. Define initial state
+          Eigen::VectorXd state(6);
+    
+        
+          const double Lf = 2.67;
+          double x_pos = 0; //Because it is relative to the car coordinate now
+          double y_pos = 0;//Because it is relative to the car coordinate now
+          double psi_init = 0;
+          state << x_pos, y_pos, psi_init, v, cte, epsi;
+          
+          // 5. Solve using MPC
+          auto result = mpc.Solve(state, coeffs);
+          
+          // Steering angle from solver was reversed. 
+         steer_value = -result[0];
+		throttle_value = result[1];
+	
+		 //Send result back to simulator
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
@@ -110,6 +153,10 @@ int main() {
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
+          
+          //MPC displayed from the result of the solver
+		 mpc_x_vals  = mpc.mpc_x;
+		 mpc_y_vals =  mpc.mpc_y;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
@@ -123,6 +170,11 @@ int main() {
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
+          
+          for (int i = 0;  i < x_car_space.size();  i++) {
+            next_x_vals.push_back(x_car_space[i] ) ;
+            next_y_vals.push_back(y_car_space[i] ) ;
+			}			
 
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
