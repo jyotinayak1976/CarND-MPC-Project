@@ -6,8 +6,8 @@
 using CppAD::AD;
 
 // TODO: Set the timestep length and duration
-size_t N = 15;
-double dt = 0.15;
+size_t N = 10;
+double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -25,16 +25,17 @@ const double Lf = 2.67;
 // The reference velocity is set to 40 mph.
 double ref_cte = 0;
 double ref_epsi = 0;
-double ref_v = 40;
+double ref_v = 100;
 
 //Multipliers for the cost function. Tuned based on performance in the simulator
-int cost_cte = 1500;
-int cost_eps = 500;
+int cost_cte = 2000;
+int cost_eps = 2000;
 int cost_v = 1;
-int cost_current_delta = 50;
-int cost_current_a = 25;
-int cost_diff_delta = 300;
-int cost_diff_a = 125;
+int cost_current_delta = 3;
+int cost_current_a = 3;
+int cost_v_psi = 600;
+int cost_diff_delta = 200;
+int cost_diff_a = 15;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -76,6 +77,8 @@ class FG_eval {
     for (int i = 0; i < N - 1; i++) {
       fg[0] += cost_current_delta*CppAD::pow(vars[delta_start + i], 2);
       fg[0] += cost_current_a*CppAD::pow(vars[a_start + i], 2);
+      //putting cost for v and psi
+      fg[0] += cost_v_psi*CppAD::pow(vars[delta_start + i] * vars[v_start+i], 2);
     }
 
     // Minimize the value gap between sequential actuations.
@@ -119,8 +122,10 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + i];
       AD<double> a0 = vars[a_start + i];
 
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0;
-      AD<double> psides0 = CppAD::atan(coeffs[1]);
+      //AD<double> f0 = coeffs[0] + coeffs[1] * x0;
+      //AD<double> psides0 = CppAD::atan(coeffs[1]);
+      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * CppAD::pow(x0, 2) + coeffs[3] * CppAD::pow(x0, 3);
+      AD<double> psides0 = CppAD::atan(coeffs[1] + 2 * coeffs[2] * x0 + 3 * coeffs[3] * CppAD::pow(x0, 2));
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
